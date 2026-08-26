@@ -19,6 +19,7 @@ Route::middleware(['auth'])->group(function () {
 
     Route::post('/feed/{contentItem}/like', [LikeSaveController::class, 'toggleLike'])->name('feed.like');
     Route::post('/feed/{contentItem}/save', [LikeSaveController::class, 'toggleSave'])->name('feed.save');
+    Route::post('/feed/{contentItem}/share', [LikeSaveController::class, 'share'])->name('feed.share');
 });
 
 Route::middleware(['auth', 'verified', EnsureOnboardingComplete::class])->group(function () {

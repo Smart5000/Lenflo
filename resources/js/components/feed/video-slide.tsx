@@ -1,8 +1,7 @@
-import { router } from '@inertiajs/react';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Heart, Bookmark, Share2, Play } from 'lucide-react';
+import { Heart, Bookmark, Share2, Play, VolumeX } from 'lucide-react';
+import { useCallback, useEffect, useRef } from 'react';
+import { useYouTubePlayer } from '@/hooks/use-youtube-player';
 import { cn } from '@/lib/utils';
-import { useAuth } from '@/hooks/use-auth';
 
 type Category = {
     id: number;
@@ -31,51 +30,69 @@ type Props = {
     isSaved: boolean;
     onLike: (id: number) => void;
     onSave: (id: number) => void;
+    onShare: (item: ContentItem) => void;
 };
 
 function formatDuration(seconds: number | null): string {
-    if (!seconds) return '';
+    if (!seconds) {
+        return '';
+    }
+
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
+
     return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
 function getYouTubeId(url: string): string | null {
     const match = url.match(/(?:youtu\.be\/|youtube\.com\/embed\/)([^?&]+)/);
+
     return match ? match[1] : null;
 }
 
-export default function VideoSlide({ item, isActive, isLiked, isSaved, onLike, onSave }: Props) {
-    const { requireAuth } = useAuth();
-    const [playStarted, setPlayStarted] = useState(false);
-    const iframeRef = useRef<HTMLIFrameElement>(null);
+const DOUBLE_TAP_DELAY = 300;
 
+export default function VideoSlide({ item, isActive, isLiked, isSaved, onLike, onSave, onShare }: Props) {
     const videoId = getYouTubeId(item.embed_url);
-    const embedSrc = videoId
-        ? `https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1&playsinline=1&enablejsapi=1`
-        : item.embed_url;
+    const { containerRef, state, muted, play, unmute } = useYouTubePlayer(isActive ? videoId : null);
+    const lastTapRef = useRef<number>(0);
 
+    // Autoplay when player becomes ready
     useEffect(() => {
-        if (!isActive) {
-            setPlayStarted(false);
+        if (state === 'ready' || state === 'playing') {
+            play();
         }
-    }, [isActive]);
+    }, [state, play]);
 
     const handleLike = useCallback(() => {
-        requireAuth(() => onLike(item.id));
-    }, [requireAuth, onLike, item.id]);
+        onLike(item.id);
+    }, [onLike, item.id]);
 
     const handleSave = useCallback(() => {
-        requireAuth(() => onSave(item.id));
-    }, [requireAuth, onSave, item.id]);
+        onSave(item.id);
+    }, [onSave, item.id]);
 
     const handleShare = useCallback(() => {
-        if (navigator.share) {
-            navigator.share({ title: item.title, url: window.location.href });
+        onShare(item);
+    }, [onShare, item]);
+
+    const handleDoubleTap = useCallback(() => {
+        const now = Date.now();
+
+        if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
+            if (!isLiked) {
+                onLike(item.id);
+            }
+
+            lastTapRef.current = 0;
         } else {
-            navigator.clipboard.writeText(window.location.href);
+            lastTapRef.current = now;
         }
-    }, [item.title]);
+    }, [isLiked, onLike, item.id]);
+
+    const handleUnmute = useCallback(() => {
+        unmute();
+    }, [unmute]);
 
     return (
         <section
@@ -83,27 +100,17 @@ export default function VideoSlide({ item, isActive, isLiked, isSaved, onLike, o
             aria-label={`Video: ${item.title}`}
         >
             {/* Video / Embed */}
-            <div className="absolute inset-0 flex items-center justify-center">
-                {videoId && isActive && playStarted ? (
-                    <iframe
-                        ref={iframeRef}
-                        src={embedSrc}
-                        title={item.title}
-                        className="h-full w-full"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                        allowFullScreen
-                    />
-                ) : item.thumbnail_url ? (
-                    <div className="relative h-full w-full">
-                        <img
-                            src={item.thumbnail_url}
-                            alt={item.title}
-                            className="h-full w-full object-cover"
-                            loading={isActive ? 'eager' : 'lazy'}
-                        />
-                        {isActive && (
+            <div
+                className="absolute inset-0 flex items-center justify-center"
+                onDoubleClick={handleDoubleTap}
+            >
+                {videoId && isActive ? (
+                    <div className="h-full w-full">
+                        <div ref={containerRef} className="h-full w-full" />
+                        {/* Autoplay error fallback: show play button */}
+                        {state === 'error' && (
                             <button
-                                onClick={() => setPlayStarted(true)}
+                                onClick={play}
                                 className="absolute inset-0 flex items-center justify-center bg-black/30 transition-colors hover:bg-black/40"
                                 aria-label={`Play ${item.title}`}
                             >
@@ -112,6 +119,28 @@ export default function VideoSlide({ item, isActive, isLiked, isSaved, onLike, o
                                 </div>
                             </button>
                         )}
+                        {/* Unmute overlay when muted */}
+                        {state === 'playing' && muted && (
+                            <button
+                                onClick={handleUnmute}
+                                className="absolute inset-0 flex items-center justify-center bg-transparent"
+                                aria-label="Unmute video"
+                            >
+                                <div className="flex items-center gap-2 rounded-full bg-black/60 px-4 py-2 text-sm text-white backdrop-blur-sm transition-colors hover:bg-black/80">
+                                    <VolumeX className="size-4" />
+                                    <span>Tap to unmute</span>
+                                </div>
+                            </button>
+                        )}
+                    </div>
+                ) : item.thumbnail_url ? (
+                    <div className="relative h-full w-full">
+                        <img
+                            src={item.thumbnail_url}
+                            alt={item.title}
+                            className="h-full w-full object-cover"
+                            loading={isActive ? 'eager' : 'lazy'}
+                        />
                     </div>
                 ) : (
                     <div className="flex flex-col items-center gap-4 text-white/60">
@@ -159,6 +188,7 @@ export default function VideoSlide({ item, isActive, isLiked, isSaved, onLike, o
                 />
                 <EngagementButton
                     icon={Share2}
+                    activeIcon={Share2}
                     count={null}
                     active={false}
                     activeColor=""

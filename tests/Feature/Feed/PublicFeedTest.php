@@ -263,4 +263,112 @@ class PublicFeedTest extends TestCase
             ->first();
         $this->assertEquals(EngagementType::Save, $event->type);
     }
+
+    // ── Share ──────────────────────────────────────────────────
+
+    public function test_authenticated_user_can_share(): void
+    {
+        $user = User::factory()->create();
+        $item = ContentItem::factory()->approved()->create();
+        $item->assignAgeBands([AgeBand::AllAges->value]);
+
+        $response = $this->actingAs($user)->postJson("/feed/{$item->id}/share");
+        $response->assertOk()->assertJson(['shared' => true]);
+    }
+
+    public function test_share_creates_engagement_event(): void
+    {
+        $user = User::factory()->create();
+        $item = ContentItem::factory()->approved()->create();
+        $item->assignAgeBands([AgeBand::AllAges->value]);
+
+        $this->actingAs($user)->postJson("/feed/{$item->id}/share");
+
+        $event = EngagementEvent::where('user_id', $user->id)
+            ->where('content_item_id', $item->id)
+            ->where('type', EngagementType::Share)
+            ->first();
+        $this->assertNotNull($event);
+    }
+
+    public function test_guest_cannot_share(): void
+    {
+        $item = ContentItem::factory()->approved()->create();
+        $item->assignAgeBands([AgeBand::AllAges->value]);
+
+        $response = $this->postJson("/feed/{$item->id}/share");
+        $response->assertUnauthorized();
+    }
+
+    public function test_shares_are_not_deduplicated(): void
+    {
+        $user = User::factory()->create();
+        $item = ContentItem::factory()->approved()->create();
+        $item->assignAgeBands([AgeBand::AllAges->value]);
+
+        $this->actingAs($user)->postJson("/feed/{$item->id}/share");
+        $this->actingAs($user)->postJson("/feed/{$item->id}/share");
+
+        $this->assertEquals(2, EngagementEvent::where('user_id', $user->id)
+            ->where('content_item_id', $item->id)
+            ->where('type', EngagementType::Share)
+            ->count());
+    }
+
+    // ── Duplicate prevention ───────────────────────────────────
+
+    public function test_duplicate_likes_are_prevented_at_database_level(): void
+    {
+        $user = User::factory()->create();
+        $item = ContentItem::factory()->approved()->create();
+        $item->assignAgeBands([AgeBand::AllAges->value]);
+
+        Like::create(['user_id' => $user->id, 'content_item_id' => $item->id]);
+
+        $response = $this->actingAs($user)->postJson("/feed/{$item->id}/like");
+        $response->assertOk()->assertJson(['liked' => false]);
+        $this->assertDatabaseMissing('likes', ['user_id' => $user->id, 'content_item_id' => $item->id]);
+    }
+
+    public function test_duplicate_saves_are_prevented_at_database_level(): void
+    {
+        $user = User::factory()->create();
+        $item = ContentItem::factory()->approved()->create();
+        $item->assignAgeBands([AgeBand::AllAges->value]);
+
+        Save::create(['user_id' => $user->id, 'content_item_id' => $item->id]);
+
+        $response = $this->actingAs($user)->postJson("/feed/{$item->id}/save");
+        $response->assertOk()->assertJson(['saved' => false]);
+        $this->assertDatabaseMissing('saves', ['user_id' => $user->id, 'content_item_id' => $item->id]);
+    }
+
+    // ── Authorization ──────────────────────────────────────────
+
+    public function test_cannot_like_non_feed_eligible_content(): void
+    {
+        $user = User::factory()->create();
+        $item = ContentItem::factory()->candidate()->create();
+
+        $response = $this->actingAs($user)->postJson("/feed/{$item->id}/like");
+        $response->assertForbidden();
+    }
+
+    public function test_cannot_save_non_feed_eligible_content(): void
+    {
+        $user = User::factory()->create();
+        $item = ContentItem::factory()->candidate()->create();
+
+        $response = $this->actingAs($user)->postJson("/feed/{$item->id}/save");
+        $response->assertForbidden();
+    }
+
+    public function test_cannot_share_non_feed_eligible_content(): void
+    {
+        $user = User::factory()->create();
+        $item = ContentItem::factory()->candidate()->create();
+
+        $response = $this->actingAs($user)->postJson("/feed/{$item->id}/share");
+        $response->assertForbidden();
+    }
 }

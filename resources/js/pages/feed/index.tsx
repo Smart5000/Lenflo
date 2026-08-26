@@ -1,9 +1,10 @@
-import { Head, router } from '@inertiajs/react';
-import FeedLayout from '@/layouts/feed/feed-layout';
-import VideoSlide from '@/components/feed/video-slide';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useAuth } from '@/hooks/use-auth';
+import { Head } from '@inertiajs/react';
 import { LogIn } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
+import VideoSlide from '@/components/feed/video-slide';
+import { useAuth } from '@/hooks/use-auth';
+import FeedLayout from '@/layouts/feed/feed-layout';
 
 type Category = {
     id: number;
@@ -36,7 +37,7 @@ type FeedPageProps = {
 };
 
 export default function FeedIndex({ contentItems, userLikes, userSaves, meta }: FeedPageProps) {
-    const { isAuthenticated } = useAuth();
+    const { isAuthenticated, requireAuth } = useAuth();
     const [activeIndex, setActiveIndex] = useState(0);
     const [likes, setLikes] = useState<Record<number, boolean>>(userLikes);
     const [saves, setSaves] = useState<Record<number, boolean>>(userSaves);
@@ -46,14 +47,20 @@ export default function FeedIndex({ contentItems, userLikes, userSaves, meta }: 
     // IntersectionObserver to track active slide
     useEffect(() => {
         const container = containerRef.current;
-        if (!container) return;
+
+        if (!container) {
+            return;
+        }
 
         const observer = new IntersectionObserver(
             (entries) => {
                 entries.forEach((entry) => {
                     if (entry.isIntersecting) {
                         const idx = slideRefs.current.indexOf(entry.target as HTMLElement);
-                        if (idx !== -1) setActiveIndex(idx);
+
+                        if (idx !== -1) {
+                            setActiveIndex(idx);
+                        }
                     }
                 });
             },
@@ -64,7 +71,9 @@ export default function FeedIndex({ contentItems, userLikes, userSaves, meta }: 
         );
 
         slideRefs.current.forEach((el) => {
-            if (el) observer.observe(el);
+            if (el) {
+                observer.observe(el);
+            }
         });
 
         return () => observer.disconnect();
@@ -85,18 +94,104 @@ export default function FeedIndex({ contentItems, userLikes, userSaves, meta }: 
         }
 
         window.addEventListener('keydown', handleKeyDown);
+
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [activeIndex, contentItems.length]);
 
-    const handleLike = useCallback((id: number) => {
-        setLikes((prev) => ({ ...prev, [id]: !prev[id] }));
-        router.post(`/feed/${id}/like`, {}, { preserveScroll: true, only: [] });
-    }, []);
+    const handleLike = useCallback(
+        (id: number) => {
+            requireAuth(() => {
+                const previousLiked = !!likes[id];
+                setLikes((prev) => ({ ...prev, [id]: !prev[id] }));
 
-    const handleSave = useCallback((id: number) => {
-        setSaves((prev) => ({ ...prev, [id]: !prev[id] }));
-        router.post(`/feed/${id}/save`, {}, { preserveScroll: true, only: [] });
-    }, []);
+                fetch(`/feed/${id}/like`, {
+                    method: 'POST',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-XSRF-TOKEN': decodeURIComponent(
+                            document.cookie
+                                .split('; ')
+                                .find((c) => c.startsWith('XSRF-TOKEN='))
+                                ?.split('=')[1] ?? '',
+                        ),
+                    },
+                }).then((response) => {
+                    if (!response.ok) {
+                        setLikes((prev) => ({ ...prev, [id]: previousLiked }));
+                        toast.error('Could not update like. Please try again.');
+                    }
+                }).catch(() => {
+                    setLikes((prev) => ({ ...prev, [id]: previousLiked }));
+                    toast.error('Could not update like. Please try again.');
+                });
+            });
+        },
+        [requireAuth, likes],
+    );
+
+    const handleSave = useCallback(
+        (id: number) => {
+            requireAuth(() => {
+                const previousSaved = !!saves[id];
+                setSaves((prev) => ({ ...prev, [id]: !prev[id] }));
+
+                fetch(`/feed/${id}/save`, {
+                    method: 'POST',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-XSRF-TOKEN': decodeURIComponent(
+                            document.cookie
+                                .split('; ')
+                                .find((c) => c.startsWith('XSRF-TOKEN='))
+                                ?.split('=')[1] ?? '',
+                        ),
+                    },
+                }).then((response) => {
+                    if (!response.ok) {
+                        setSaves((prev) => ({ ...prev, [id]: previousSaved }));
+                        toast.error('Could not update save. Please try again.');
+                    }
+                }).catch(() => {
+                    setSaves((prev) => ({ ...prev, [id]: previousSaved }));
+                    toast.error('Could not update save. Please try again.');
+                });
+            });
+        },
+        [requireAuth, saves],
+    );
+
+    const handleShare = useCallback(
+        (item: ContentItem) => {
+            const shareData = { title: item.title, url: window.location.href };
+
+            const trackShare = () => {
+                fetch(`/feed/${item.id}/share`, {
+                    method: 'POST',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-XSRF-TOKEN': decodeURIComponent(
+                            document.cookie
+                                .split('; ')
+                                .find((c) => c.startsWith('XSRF-TOKEN='))
+                                ?.split('=')[1] ?? '',
+                        ),
+                    },
+                }).catch(() => {});
+            };
+
+            if (navigator.share) {
+                navigator.share(shareData).then(trackShare).catch(() => {});
+            } else {
+                navigator.clipboard.writeText(shareData.url).then(() => {
+                    trackShare();
+                    toast.success('Link copied to clipboard');
+                }).catch(() => {
+                    toast.error('Could not copy link');
+                });
+            }
+        },
+        [],
+    );
 
     const setSlideRef = useCallback((index: number) => (el: HTMLElement | null) => {
         slideRefs.current[index] = el;
@@ -173,6 +268,7 @@ export default function FeedIndex({ contentItems, userLikes, userSaves, meta }: 
                             isSaved={!!saves[item.id]}
                             onLike={handleLike}
                             onSave={handleSave}
+                            onShare={handleShare}
                         />
                     </div>
                 ))}

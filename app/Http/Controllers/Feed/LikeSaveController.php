@@ -10,11 +10,14 @@ use App\Models\Like;
 use App\Models\Save;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 
 class LikeSaveController extends Controller
 {
     public function toggleLike(Request $request, ContentItem $contentItem): JsonResponse
     {
+        Gate::authorize('like', $contentItem);
+
         $user = $request->user();
 
         $existing = Like::where('user_id', $user->id)
@@ -46,6 +49,8 @@ class LikeSaveController extends Controller
 
     public function toggleSave(Request $request, ContentItem $contentItem): JsonResponse
     {
+        Gate::authorize('save', $contentItem);
+
         $user = $request->user();
 
         $existing = Save::where('user_id', $user->id)
@@ -73,5 +78,18 @@ class LikeSaveController extends Controller
             'saved' => $saved,
             'saves_count' => $contentItem->saves()->count(),
         ]);
+    }
+
+    public function share(Request $request, ContentItem $contentItem): JsonResponse
+    {
+        Gate::authorize('share', $contentItem);
+
+        EngagementEvent::create([
+            'user_id' => $request->user()->id,
+            'content_item_id' => $contentItem->id,
+            'type' => EngagementType::Share,
+        ]);
+
+        return response()->json(['shared' => true]);
     }
 }

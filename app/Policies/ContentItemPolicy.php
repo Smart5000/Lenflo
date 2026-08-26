@@ -56,4 +56,19 @@ class ContentItemPolicy
     {
         return $user->isSuperAdmin();
     }
+
+    public function like(User $user, ContentItem $contentItem): bool
+    {
+        return $contentItem->isFeedEligible();
+    }
+
+    public function save(User $user, ContentItem $contentItem): bool
+    {
+        return $contentItem->isFeedEligible();
+    }
+
+    public function share(User $user, ContentItem $contentItem): bool
+    {
+        return $contentItem->isFeedEligible();
+    }
 }

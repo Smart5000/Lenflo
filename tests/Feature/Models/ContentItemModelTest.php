@@ -56,8 +56,8 @@ class ContentItemModelTest extends TestCase
     {
         ContentItem::factory()->candidate()->count(2)->create();
         ContentItem::factory()->pending()->count(2)->create();
-        ContentItem::factory()->approved()->count(3)->create();
-        ContentItem::factory()->published()->count(2)->create();
+        ContentItem::factory()->approved()->count(3)->create()->each(fn ($c) => $c->assignAgeBands([AgeBand::AllAges->value]));
+        ContentItem::factory()->published()->count(2)->create()->each(fn ($c) => $c->assignAgeBands([AgeBand::AllAges->value]));
         ContentItem::factory()->rejected()->count(1)->create();
 
         $eligible = ContentItem::feedEligible()->count();
@@ -79,11 +79,13 @@ class ContentItemModelTest extends TestCase
     public function test_content_item_is_feed_eligible(): void
     {
         $approved = ContentItem::factory()->approved()->create();
+        $approved->assignAgeBands([AgeBand::AllAges->value]);
         $published = ContentItem::factory()->published()->create();
+        $published->assignAgeBands([AgeBand::AllAges->value]);
         $candidate = ContentItem::factory()->candidate()->create();
 
-        $this->assertTrue($approved->isFeedEligible());
-        $this->assertTrue($published->isFeedEligible());
+        $this->assertTrue($approved->fresh()->isFeedEligible());
+        $this->assertTrue($published->fresh()->isFeedEligible());
         $this->assertFalse($candidate->isFeedEligible());
     }
 

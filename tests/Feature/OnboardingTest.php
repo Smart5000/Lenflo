@@ -60,7 +60,8 @@ class OnboardingTest extends TestCase
 
         $response = $this->actingAs($user)->post(route('onboarding.store'), []);
 
-        $response->assertSessionHasErrors(['birth_date', 'country_code', 'language_code']);
+        $response->assertSessionHasErrors('birth_date');
+        $response->assertSessionDoesntHaveErrors(['country_code', 'language_code']);
     }
 
     public function test_onboarding_store_validates_birth_date(): void
@@ -119,6 +120,63 @@ class OnboardingTest extends TestCase
         $this->assertTrue($profile->onboarding_completed);
         $this->assertEquals('NG', $profile->country_code);
         $this->assertEquals('en', $profile->language_code);
+    }
+
+    public function test_onboarding_store_completes_without_selections(): void
+    {
+        $user = User::factory()->create();
+        $user->profile()->create([
+            'onboarding_completed' => false,
+        ]);
+
+        $response = $this->actingAs($user)->post(route('onboarding.store'), [
+            'birth_date' => '2000-01-15',
+        ]);
+
+        $response->assertRedirect(route('feed'));
+
+        $profile = $user->fresh()->profile;
+        $this->assertTrue($profile->onboarding_completed);
+        $this->assertNull($profile->country_code);
+        $this->assertNull($profile->language_code);
+    }
+
+    public function test_onboarding_page_has_country_options(): void
+    {
+        $user = User::factory()->create();
+        $user->profile()->create([
+            'onboarding_completed' => false,
+        ]);
+
+        $response = $this->actingAs($user)->get(route('onboarding'));
+
+        $response->assertOk();
+        $response->assertInertia(fn ($page) => $page
+            ->has('countries')
+            ->where('countries.0.code', 'DZ')
+            ->where('countries.0.name', 'Algeria')
+        );
+
+        $this->assertDatabaseCount('countries', 60);
+    }
+
+    public function test_onboarding_page_has_language_options(): void
+    {
+        $user = User::factory()->create();
+        $user->profile()->create([
+            'onboarding_completed' => false,
+        ]);
+
+        $response = $this->actingAs($user)->get(route('onboarding'));
+
+        $response->assertOk();
+        $response->assertInertia(fn ($page) => $page
+            ->has('languages')
+            ->where('languages.0.code', 'am')
+            ->where('languages.0.name', 'Amharic')
+        );
+
+        $this->assertDatabaseCount('languages', 12);
     }
 
     public function test_dashboard_redirects_to_onboarding_when_incomplete(): void

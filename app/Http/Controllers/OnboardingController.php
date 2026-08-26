@@ -38,8 +38,8 @@ class OnboardingController extends Controller
     {
         $validated = $request->validate([
             'birth_date' => ['required', 'date', 'before:-3 years', 'after:1900-01-01'],
-            'country_code' => ['required', 'string', 'size:2', 'exists:countries,code'],
-            'language_code' => ['required', 'string', 'max:5', 'exists:languages,code'],
+            'country_code' => ['nullable', 'string', 'size:2', 'exists:countries,code'],
+            'language_code' => ['nullable', 'string', 'max:5', 'exists:languages,code'],
         ]);
 
         $user = $request->user();
@@ -53,8 +53,8 @@ class OnboardingController extends Controller
         }
 
         $profile->update([
-            'country_code' => $validated['country_code'],
-            'language_code' => $validated['language_code'],
+            'country_code' => $validated['country_code'] ?? null,
+            'language_code' => $validated['language_code'] ?? null,
             'onboarding_completed' => true,
         ]);
 

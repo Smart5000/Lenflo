@@ -63,7 +63,7 @@ export default function Onboarding({ user, countries, languages }: Props) {
                                 <p className="text-center text-sm text-muted-foreground">
                                     {step === 1
                                         ? 'We use this to show you age-appropriate content. Your birthday is not shown to others.'
-                                        : 'Help us personalize your learning feed.'}
+                                        : 'Help us personalize your learning feed. You can skip this step.'}
                                 </p>
                             </div>
                         </div>
@@ -134,7 +134,6 @@ export default function Onboarding({ user, countries, languages }: Props) {
                                                 </Label>
                                                 <Select
                                                     name="country_code"
-                                                    required
                                                     defaultValue=""
                                                 >
                                                     <SelectTrigger tabIndex={1}>
@@ -172,7 +171,6 @@ export default function Onboarding({ user, countries, languages }: Props) {
                                                 </Label>
                                                 <Select
                                                     name="language_code"
-                                                    required
                                                     defaultValue=""
                                                 >
                                                     <SelectTrigger tabIndex={2}>
@@ -225,6 +223,17 @@ export default function Onboarding({ user, countries, languages }: Props) {
                                                     Get started
                                                 </Button>
                                             </div>
+
+                                            <Button
+                                                type="submit"
+                                                variant="ghost"
+                                                className="w-full text-muted-foreground"
+                                                tabIndex={5}
+                                                disabled={processing}
+                                                data-test="onboarding-skip"
+                                            >
+                                                Skip for now
+                                            </Button>
                                         </div>
                                     )}
                                 </>

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\GoogleController;
+use App\Http\Controllers\Feed\LikeSaveController;
 use App\Http\Controllers\Feed\PublicFeedController;
 use App\Http\Controllers\OnboardingController;
 use App\Http\Middleware\EnsureOnboardingComplete;
@@ -15,6 +16,9 @@ Route::get('/auth/google/callback', [GoogleController::class, 'callback'])->name
 Route::middleware(['auth'])->group(function () {
     Route::get('/onboarding', [OnboardingController::class, 'show'])->name('onboarding');
     Route::post('/onboarding', [OnboardingController::class, 'store'])->name('onboarding.store');
+
+    Route::post('/feed/{contentItem}/like', [LikeSaveController::class, 'toggleLike'])->name('feed.like');
+    Route::post('/feed/{contentItem}/save', [LikeSaveController::class, 'toggleSave'])->name('feed.save');
 });
 
 Route::middleware(['auth', 'verified', EnsureOnboardingComplete::class])->group(function () {

@@ -84,10 +84,11 @@ class DatabaseSeeder extends Seeder
             );
 
             // Attach random age bands
-            $bands = [AgeBand::EarlyLearner, AgeBand::YoungExplorer, AgeBand::CuriousMind, AgeBand::Teen, AgeBand::YoungAdult, AgeBand::AllAges];
-            $content->ageBands()->attach(
-                fake()->randomElements($bands, fake()->numberBetween(1, 3))
+            $bands = fake()->randomElements(
+                array_column(AgeBand::cases(), 'value'),
+                fake()->numberBetween(1, 3)
             );
+            $content->assignAgeBands($bands);
         }
     }
 }

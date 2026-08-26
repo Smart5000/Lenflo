@@ -55,7 +55,7 @@ class YouTubeImportTest extends TestCase
         $user->profile()->create(['onboarding_completed' => true]);
         $this->actingAs($user);
 
-        $response = $this->post(route('admin.youtube.import'), ['video_id' => 'dQw4w9WgXcQ']);
+        $response = $this->postJson(route('admin.youtube.import'), ['video_id' => 'dQw4w9WgXcQ']);
         $response->assertForbidden();
     }
 
@@ -71,7 +71,7 @@ class YouTubeImportTest extends TestCase
         $user->profile()->create(['onboarding_completed' => true]);
         $this->actingAs($user);
 
-        $response = $this->post(route('admin.content.import-url'), ['url' => 'https://www.youtube.com/watch?v=dQw4w9WgXcQ']);
+        $response = $this->postJson(route('admin.content.import-url'), ['url' => 'https://www.youtube.com/watch?v=dQw4w9WgXcQ']);
         $response->assertForbidden();
     }
 
@@ -106,8 +106,14 @@ class YouTubeImportTest extends TestCase
             ]),
         ]);
 
-        $response = $this->post(route('admin.youtube.import'), ['video_id' => 'dQw4w9WgXcQ']);
-        $response->assertRedirect();
+        $response = $this->postJson(route('admin.youtube.import'), ['video_id' => 'dQw4w9WgXcQ']);
+        $response->assertOk()
+            ->assertJsonStructure([
+                'contentItem' => ['id', 'title', 'moderation_status'],
+                'ageBandValues',
+                'availableCategories',
+                'allAgeBands',
+            ]);
 
         $this->assertDatabaseHas('content_items', [
             'provider' => 'youtube',
@@ -115,6 +121,43 @@ class YouTubeImportTest extends TestCase
             'title' => 'Test Video Title',
             'moderation_status' => 'candidate',
         ]);
+    }
+
+    public function test_import_returns_classification_data(): void
+    {
+        $user = User::factory()->superAdmin()->create();
+        $user->profile()->create(['onboarding_completed' => true]);
+        $this->actingAs($user);
+
+        config(['services.youtube.api_key' => 'test-key']);
+
+        Http::fake([
+            'googleapis.com/youtube/v3/videos*' => Http::response([
+                'items' => [[
+                    'id' => 'class1234567',
+                    'snippet' => [
+                        'title' => 'Classification Test',
+                        'description' => '',
+                        'channelTitle' => 'Channel',
+                        'publishedAt' => '2024-01-15T10:00:00Z',
+                        'thumbnails' => [],
+                    ],
+                    'contentDetails' => [
+                        'duration' => 'PT1M',
+                    ],
+                ]],
+            ]),
+        ]);
+
+        $response = $this->postJson(route('admin.youtube.import'), ['video_id' => 'class1234567']);
+        $response->assertOk();
+
+        $data = $response->json();
+        $this->assertEquals('Classification Test', $data['contentItem']['title']);
+        $this->assertEquals('candidate', $data['contentItem']['moderation_status']);
+        $this->assertIsArray($data['availableCategories']);
+        $this->assertIsArray($data['allAgeBands']);
+        $this->assertIsArray($data['ageBandValues']);
     }
 
     public function test_imported_content_is_always_candidate(): void
@@ -143,7 +186,7 @@ class YouTubeImportTest extends TestCase
             ]),
         ]);
 
-        $this->post(route('admin.youtube.import'), ['video_id' => 'test1234567']);
+        $this->postJson(route('admin.youtube.import'), ['video_id' => 'test1234567']);
 
         $content = ContentItem::where('external_id', 'test1234567')->first();
         $this->assertNotNull($content);
@@ -181,7 +224,7 @@ class YouTubeImportTest extends TestCase
             ]),
         ]);
 
-        $this->post(route('admin.youtube.import'), ['video_id' => 'meta1234567']);
+        $this->postJson(route('admin.youtube.import'), ['video_id' => 'meta1234567']);
 
         $content = ContentItem::where('external_id', 'meta1234567')->first();
         $this->assertEquals('Metadata Test Video', $content->title);
@@ -221,10 +264,16 @@ class YouTubeImportTest extends TestCase
             ]),
         ]);
 
-        $response = $this->post(route('admin.content.import-url'), [
+        $response = $this->postJson(route('admin.content.import-url'), [
             'url' => 'https://www.youtube.com/watch?v=url123456789',
         ]);
-        $response->assertRedirect();
+        $response->assertOk()
+            ->assertJsonStructure([
+                'contentItem' => ['id', 'title', 'moderation_status'],
+                'ageBandValues',
+                'availableCategories',
+                'allAgeBands',
+            ]);
 
         $this->assertDatabaseHas('content_items', [
             'provider' => 'youtube',
@@ -240,10 +289,11 @@ class YouTubeImportTest extends TestCase
         $user->profile()->create(['onboarding_completed' => true]);
         $this->actingAs($user);
 
-        $response = $this->post(route('admin.content.import-url'), [
+        $response = $this->postJson(route('admin.content.import-url'), [
             'url' => 'https://www.example.com/not-youtube',
         ]);
-        $response->assertSessionHasErrors('url');
+        $response->assertUnprocessable()
+            ->assertJsonValidationErrors('url');
     }
 
     public function test_duplicate_video_import_returns_existing(): void
@@ -277,7 +327,8 @@ class YouTubeImportTest extends TestCase
             ]),
         ]);
 
-        $this->post(route('admin.youtube.import'), ['video_id' => 'dup12345678']);
+        $response = $this->postJson(route('admin.youtube.import'), ['video_id' => 'dup12345678']);
+        $response->assertOk();
 
         $this->assertEquals(1, ContentItem::where('external_id', 'dup12345678')->count());
     }

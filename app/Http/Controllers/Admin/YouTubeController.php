@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Actions\Admin\ImportYouTubeVideo;
+use App\Enums\AgeBand;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ImportYouTubeUrlRequest;
+use App\Models\Category;
 use App\Models\Content\ContentItem;
 use App\Services\YouTubeService;
-use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -60,7 +62,7 @@ class YouTubeController extends Controller
     /**
      * Import a video from YouTube search results.
      */
-    public function import(Request $request, ImportYouTubeVideo $importAction): RedirectResponse
+    public function import(Request $request, ImportYouTubeVideo $importAction): JsonResponse
     {
         $request->validate([
             'video_id' => ['required', 'string'],
@@ -70,31 +72,47 @@ class YouTubeController extends Controller
         $videoData = $this->youtube->getVideoDetails($videoId);
 
         if ($videoData === null) {
-            return back()->withErrors(['video_id' => 'Video not found on YouTube.']);
+            return response()->json(['error' => 'Video not found on YouTube.'], 404);
         }
 
         $contentItem = $importAction->execute($videoData);
 
-        return to_route('admin.content.show', $contentItem)
-            ->with('toast', ['type' => 'success', 'message' => "Imported \"{$contentItem->title}\" as a candidate for review."]);
+        return response()->json($this->formatImportResponse($contentItem));
     }
 
     /**
      * Import a video by pasting a YouTube URL.
      */
-    public function importUrl(ImportYouTubeUrlRequest $request, ImportYouTubeVideo $importAction): RedirectResponse
+    public function importUrl(ImportYouTubeUrlRequest $request, ImportYouTubeVideo $importAction): JsonResponse
     {
         $videoId = $this->youtube->extractVideoId($request->input('url'));
 
         $videoData = $this->youtube->getVideoDetails($videoId);
 
         if ($videoData === null) {
-            return back()->withErrors(['url' => 'Video not found on YouTube.']);
+            return response()->json(['error' => 'Video not found on YouTube.'], 404);
         }
 
         $contentItem = $importAction->execute($videoData);
 
-        return to_route('admin.content.show', $contentItem)
-            ->with('toast', ['type' => 'success', 'message' => "Imported \"{$contentItem->title}\" as a candidate for review."]);
+        return response()->json($this->formatImportResponse($contentItem));
+    }
+
+    /**
+     * Format content item data for the classification overlay.
+     */
+    private function formatImportResponse(ContentItem $contentItem): array
+    {
+        $contentItem->load(['categories', 'reviewer']);
+
+        return [
+            'contentItem' => $contentItem,
+            'ageBandValues' => $contentItem->ageBandValues()->all(),
+            'availableCategories' => Category::where('is_active', true)->orderBy('name')->get(),
+            'allAgeBands' => collect(AgeBand::cases())->map(fn (AgeBand $band) => [
+                'value' => $band->value,
+                'label' => $band->label(),
+            ])->all(),
+        ];
     }
 }
